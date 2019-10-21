@@ -56,6 +56,13 @@ try:
 except ImportError:
     yaml = None
 
+try:
+    from astrodata import AstroData
+except ImportError:
+    class AstroData:
+        pass
+
+
 from .callStack import getCallStack, getStackFrame
 from .comparison import compareConfigs, compareScalars, getComparisonName
 
@@ -396,7 +403,7 @@ class Field(Generic[FieldTypeVar]):
     Class.
     """
 
-    supportedTypes = {str, bool, float, int, complex}
+    supportedTypes = {str, bool, float, int, complex, AstroData}
     """Supported data types for field values (`set` of types).
     """
 
@@ -787,9 +794,9 @@ class Field(Generic[FieldTypeVar]):
                 raise FieldValidationError(self, instance, str(e))
 
         instance._storage[self.name] = value
-        if at is None:
-            at = getCallStack()
-        history.append((value, at, label))
+        # We don't want to put an actual AD object here, so just the filename
+        value_to_append = value.filename if isinstance(value, AstroData) else value
+        history.append((value_to_append, at, label))
 
     def __delete__(self, instance, at=None, label="deletion"):
         """Delete an attribute from a `lsst.pex.config.Config` instance.
@@ -1514,7 +1521,7 @@ class Config(metaclass=ConfigMeta):  # type: ignore
         for field in self._fields.values():
             field.validate(self)
 
-    def formatHistory(self, name, **kwargs):
+    def formatHistory(self, name=None, **kwargs):
         """Format a configuration field's history to a human-readable format.
 
         Parameters
@@ -1533,7 +1540,7 @@ class Config(metaclass=ConfigMeta):  # type: ignore
         --------
         lsst.pex.config.history.format
         """
-        import lsst.pex.config.history as pexHist
+        from . import history as pexHist
 
         return pexHist.format(self, name, **kwargs)
 
