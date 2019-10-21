@@ -325,8 +325,14 @@ class ListField(Field[List[FieldTypeVar]], Generic[FieldTypeVar]):
             raise ValueError(
                 "dtype must either be supplied as an argument or as a type argument to the class"
             )
-        if dtype not in Field.supportedTypes:
-            raise ValueError(f"Unsupported dtype {_typeStr(dtype)}")
+        if isinstance(dtype, list):
+            dtype = tuple(dtype)
+        if isinstance(dtype, tuple):
+            if any(x not in self.supportedTypes for x in dtype):
+                raise ValueError(f"Unsupported Field dtype in {_typeStr(dtype)}")
+        elif dtype not in self.supportedTypes:
+            raise ValueError(f"Unsupported Field dtype {_typeStr(dtype)}")
+
         if length is not None:
             if length <= 0:
                 raise ValueError("'length' (%d) must be positive" % length)
