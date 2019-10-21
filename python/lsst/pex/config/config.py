@@ -812,6 +812,12 @@ class Field(Generic[FieldTypeVar]):
         if instance._frozen:
             raise FieldValidationError(self, instance, "Cannot modify a frozen Config")
 
+        if at is None:
+            at = getCallStack()
+        # setDefaults() gets a free pass due to our mashing of inheritance
+        if self.name not in instance._fields:
+            raise AttributeError(f"{instance.__class__.__name__} has no attribute {self.name}")
+
         history = instance._history.setdefault(self.name, [])
         if value is not None:
             value = _autocast(value, self.dtype)
@@ -996,6 +1002,9 @@ class Config(metaclass=ConfigMeta):  # type: ignore
     _history: dict[str, list[Any]]
     _imports: set[Any]
 
+    # Only _fields are exposure. _storage retains items that have been
+    # deleted.
+
     def __iter__(self):
         """Iterate over fields."""
         return self._fields.__iter__()
@@ -1008,7 +1017,7 @@ class Config(metaclass=ConfigMeta):  # type: ignore
         names : `~collections.abc.KeysView`
             List of `lsst.pex.config.Field` names.
         """
-        return self._storage.keys()
+        return list(self._fields)
 
     def values(self):
         """Get field values.
@@ -1018,7 +1027,7 @@ class Config(metaclass=ConfigMeta):  # type: ignore
         values : `~collections.abc.ValuesView`
             Iterator of field values.
         """
-        return self._storage.values()
+        return self.toDict().values()
 
     def items(self):
         """Get configurations as ``(field name, field value)`` pairs.
@@ -1031,7 +1040,11 @@ class Config(metaclass=ConfigMeta):  # type: ignore
             0. Field name.
             1. Field value.
         """
-        return self._storage.items()
+        return self.toDict().items()
+
+    def doc(self, field):
+        """Return docstring for field."""
+        return self._fields[field].doc
 
     def __contains__(self, name):
         """Return `True` if the specified field exists in this config.
@@ -1046,7 +1059,7 @@ class Config(metaclass=ConfigMeta):  # type: ignore
         in : `bool`
             `True` if the specified field exists in the config.
         """
-        return self._storage.__contains__(name)
+        return self._storage.__contains__(name) and name in self._fields
 
     def __new__(cls, *args, **kw):
         """Allocate a new `lsst.pex.config.Config` object.
@@ -1072,9 +1085,7 @@ class Config(metaclass=ConfigMeta):  # type: ignore
         instance._history = {}
         instance._imports = set()
         # load up defaults
-        for field in instance._fields.values():
-            instance._history[field.name] = []
-            field.__set__(instance, field.default, at=at + [field.source], label="default")
+        instance.reset(at=at)
         # set custom default-overrides
         instance.setDefaults()
         # set constructor overrides
@@ -1093,6 +1104,14 @@ class Config(metaclass=ConfigMeta):  # type: ignore
         stream = io.StringIO()
         self.saveToStream(stream)
         return (unreduceConfig, (self.__class__, stream.getvalue().encode()))
+
+    def reset(self, at=None):
+        """Reset all values to their defaults."""
+        if at is None:
+            at = getCallStack()
+        for field in self._fields.values():
+            self._history[field.name] = []
+            field.__set__(self, field.default, at=at + [field.source], label="default")
 
     def setDefaults(self):
         """Subclass hook for computing defaults.
@@ -1165,7 +1184,9 @@ class Config(metaclass=ConfigMeta):  # type: ignore
                 field = self._fields[name]
                 field.__set__(self, value, at=at, label=label)
             except KeyError:
-                raise KeyError(f"No field of name {name} exists in config type {_typeStr(self)}")
+                raise KeyError(
+                    "{} has no field named {}".format(type(self).__name__.replace("Config", ""), name)
+                )
 
     def load(self, filename, root="config"):
         """Modify this config in place by executing the Python code in a
@@ -1611,11 +1632,12 @@ class Config(metaclass=ConfigMeta):  # type: ignore
             raise AttributeError(f"{_typeStr(self)} has no attribute {attr}")
 
     def __delattr__(self, attr, at=None, label="deletion"):
+        # CJS: Hacked to allow setDefaults() to delete non-existent fields
+        if at is None:
+            at = getCallStack()
         if attr in self._fields:
-            if at is None:
-                at = getCallStack()
-            self._fields[attr].__delete__(self, at=at, label=label)
-        else:
+            del self._fields[attr]
+        elif not any(stk.function == "setDefaults" for stk in at):
             object.__delattr__(self, attr)
 
     def __eq__(self, other):
