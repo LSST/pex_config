@@ -48,7 +48,7 @@
  *             `LSST_CONTROL_FIELD` macro.
  */
 #define LSST_DECLARE_CONTROL_FIELD(WRAPPER, CLASS, NAME)         \
-    WRAPPER.def_readwrite(#NAME, &CLASS::NAME);                  \
+    WRAPPER.def_rw(#NAME, &CLASS::NAME);                  \
     WRAPPER.def_static("_doc_" #NAME, &CLASS::_doc_ ## NAME);    \
     WRAPPER.def_static("_type_" #NAME, &CLASS::_type_ ## NAME);
 
@@ -70,7 +70,7 @@
  *             `LSST_CONTROL_FIELD` macro.
  */
 #define LSST_DECLARE_NESTED_CONTROL_FIELD(WRAPPER, CLASS, NAME)  \
-    WRAPPER.def_readwrite(#NAME, &CLASS::NAME);                  \
+    WRAPPER.def_rw(#NAME, &CLASS::NAME);                  \
     WRAPPER.def_static("_doc_" #NAME, &CLASS::_doc_ ## NAME);    \
     WRAPPER.def_static("_type_" #NAME, &CLASS::_type_ ## NAME);  \
     WRAPPER.def_static("_module_" #NAME, &CLASS::_module_ ## NAME);
